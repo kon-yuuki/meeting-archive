@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String
+  passwordHash String        @map("password_hash")
+  role         String        @default("member")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  userProjects UserProject[]
+
+  @@map("users")
+}
+
+model Project {
+  id             String    @id @default(cuid())
+  projectCode    String    @unique @map("project_code")
+  projectName    String    @map("project_name")
+  clientName     String    @map("client_name")
+  status         String    @default("active")
+  notebooklmUrl  String?   @map("notebooklm_url")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  meetings     Meeting[]
+  userProjects UserProject[]
+
+  @@map("projects")
+}
+
+model UserProject {
+  userId    String @map("user_id")
+  projectId String @map("project_id")
+
+  user    User    @relation(fields: [userId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@id([userId, projectId])
+  @@map("user_projects")
+}
+
+model Meeting {
+  id                  String    @id @default(cuid())
+  projectId           String?   @map("project_id")
+  zoomMeetingId       String?   @map("zoom_meeting_id")
+  title               String
+  meetingDate         DateTime  @map("meeting_date")
+  hostName            String?   @map("host_name")
+  participantText     String?   @map("participant_text")
+  audioFilePath       String?   @map("audio_file_path")
+  transcriptRawPath   String?   @map("transcript_raw_path")
+  transcriptText      String?   @map("transcript_text")
+  summaryText         String?   @map("summary_text")
+  summaryJson         Json?     @map("summary_json")
+  status              String    @default("uploaded")
+  errorMessage        String?   @map("error_message")
+  notebooklmSynced    Boolean   @default(false) @map("notebooklm_synced")
+  notebooklmSyncedAt  DateTime? @map("notebooklm_synced_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  project         Project?          @relation(fields: [projectId], references: [id])
+  meetingActions  MeetingAction[]
+  processingLogs  ProcessingLog[]
+
+  @@map("meetings")
+}
+
+model MeetingAction {
+  id         String    @id @default(cuid())
+  meetingId  String    @map("meeting_id")
+  assignee   String?
+  actionText String    @map("action_text")
+  dueDate    DateTime? @map("due_date")
+  status     String    @default("open")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  meeting Meeting @relation(fields: [meetingId], references: [id])
+
+  @@map("meeting_actions")
+}
+
+model ProcessingLog {
+  id          String   @id @default(cuid())
+  meetingId   String   @map("meeting_id")
+  processType String   @map("process_type")
+  result      String
+  message     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  meeting Meeting @relation(fields: [meetingId], references: [id])
+
+  @@map("processing_logs")
+}
