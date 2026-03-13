@@ -91,12 +91,47 @@ STORAGE_REGION="ap-northeast-1"
 3. デプロイ
 
 ```
-AUTH_SECRET        # openssl rand -hex 32 で生成
-NEXTAUTH_URL       # https://your-app.vercel.app
-DATABASE_URL       # Supabase Transaction pooler URL
-STORAGE_*          # Supabase Storage S3 接続情報
-ANTHROPIC_API_KEY  # または OPENAI_API_KEY
+AUTH_SECRET            # openssl rand -hex 32 で生成
+NEXTAUTH_URL           # https://your-app.vercel.app
+DATABASE_URL           # Supabase Transaction pooler URL
+STORAGE_*              # Supabase Storage S3 接続情報
+ANTHROPIC_API_KEY      # または OPENAI_API_KEY
 INTERNAL_API_BASE_URL  # https://your-app.vercel.app
+# Zoom連携を使う場合
+ZOOM_WEBHOOK_SECRET_TOKEN
+ZOOM_ACCOUNT_ID
+ZOOM_CLIENT_ID
+ZOOM_CLIENT_SECRET
+```
+
+---
+
+## Zoom 自動録音取り込みのセットアップ
+
+録音完了時に自動で会議登録→文字起こしキュー投入されます。
+
+### 1. Zoom Marketplace で Server-to-Server OAuth App を作成
+
+1. [Zoom Marketplace](https://marketplace.zoom.us) にログイン
+2. **Develop → Build App → Server-to-Server OAuth** を選択
+3. スコープに `cloud_recording:read:admin` を追加
+4. **Account ID / Client ID / Client Secret** をコピーして `.env.local` に設定
+
+### 2. Event Subscription（Webhook）の設定
+
+1. 作成したアプリの **Feature → Event Subscriptions** を開く
+2. **Add new event subscription**
+   - Subscription URL: `https://your-app.vercel.app/api/webhooks/zoom`
+   - Event: **Recording → All Recordings have been completed**
+3. **Secret Token** をコピーして `ZOOM_WEBHOOK_SECRET_TOKEN` に設定
+4. **Validate** ボタンで接続確認
+
+### 3. 会議タイトルの命名規則に従う
+
+Zoom会議タイトルを以下の形式にすると自動で案件紐づけされます:
+
+```
+【PJ-001】〇〇株式会社_定例MTG_2026-03-13
 ```
 
 ---
