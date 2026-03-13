@@ -30,7 +30,7 @@ function LoginForm() {
       setError("メールアドレスまたはパスワードが正しくありません");
       setLoading(false);
     } else {
-      router.push(callbackUrl);
+      window.location.href = callbackUrl;
     }
   };
 
