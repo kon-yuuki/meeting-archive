@@ -1,36 +1,146 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 議事録管理システム
 
-## Getting Started
+クライアントMTGの録音データを文字起こし・要約・案件単位で蓄積・管理する社内向けWebシステム。
 
-First, run the development server:
+## 技術スタック
+
+- **フロントエンド / バックエンド**: Next.js 16 (App Router) + TypeScript + Tailwind CSS
+- **DB**: PostgreSQL (Supabase 推奨)
+- **ストレージ**: S3互換 (Supabase Storage 推奨)
+- **認証**: NextAuth v5 (Credentials)
+- **文字起こし**: faster-whisper / whisper.cpp (社内PCでローカル実行)
+- **要約**: Anthropic Claude API または OpenAI API
+
+---
+
+## セットアップ
+
+### 1. 依存パッケージのインストール
+
+```bash
+npm install
+```
+
+### 2. 環境変数の設定
+
+```bash
+cp .env.example .env.local
+```
+
+`.env.local` を編集して各値を設定してください（後述）。
+
+### 3. DBマイグレーション
+
+```bash
+# Supabase の SQL Editor、または psql で実行
+psql $DATABASE_URL -f prisma/migrations/0001_init/migration.sql
+psql $DATABASE_URL -f prisma/migrations/0002_add_auth/migration.sql
+```
+
+### 4. 管理者ユーザーの作成
+
+```bash
+EMAIL=admin@example.com PASSWORD=yourpassword NAME="管理者" npx tsx scripts/create-admin.ts
+```
+
+### 5. 開発サーバー起動
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Supabase セットアップ
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Database
 
-## Learn More
+1. [Supabase](https://supabase.com) でプロジェクトを作成
+2. **Settings → Database → Connection string → Transaction pooler** をコピー
+3. `.env.local` の `DATABASE_URL` に設定
 
-To learn more about Next.js, take a look at the following resources:
+```
+DATABASE_URL="postgresql://postgres.XXXX:PASSWORD@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres"
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Storage
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Supabase ダッシュボード → **Storage** → バケット `meeting-archive` を作成（非公開）
+2. **Storage → S3 Connection** から以下を取得:
+   - Endpoint URL
+   - Access Key ID
+   - Secret Access Key
+3. `.env.local` に設定:
 
-## Deploy on Vercel
+```
+STORAGE_ENDPOINT="https://XXXX.supabase.co/storage/v1/s3"
+STORAGE_BUCKET_NAME="meeting-archive"
+STORAGE_ACCESS_KEY="your-access-key-id"
+STORAGE_SECRET_KEY="your-secret-access-key"
+STORAGE_REGION="ap-northeast-1"
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+> **注意**: Supabase Storage の S3互換APIは `forcePathStyle: true` が必要です（`src/lib/storage.ts` で設定済み）。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Vercel へのデプロイ
+
+1. GitHub リポジトリを Vercel に連携
+2. **Settings → Environment Variables** に `.env.local` の内容をすべて設定
+3. デプロイ
+
+```
+AUTH_SECRET        # openssl rand -hex 32 で生成
+NEXTAUTH_URL       # https://your-app.vercel.app
+DATABASE_URL       # Supabase Transaction pooler URL
+STORAGE_*          # Supabase Storage S3 接続情報
+ANTHROPIC_API_KEY  # または OPENAI_API_KEY
+INTERNAL_API_BASE_URL  # https://your-app.vercel.app
+```
+
+---
+
+## 文字起こしワーカーの起動（社内PC）
+
+```bash
+# faster-whisper のインストール（Python環境）
+pip install faster-whisper
+
+# ワーカー起動
+TRANSCRIPTION_WORKER_ENABLED=true DATABASE_URL=... npx tsx scripts/worker/transcribe/index.ts
+```
+
+---
+
+## 要約ワーカーの起動
+
+```bash
+ANTHROPIC_API_KEY=... DATABASE_URL=... npx tsx scripts/worker/summarize/index.ts
+```
+
+---
+
+## ディレクトリ構成
+
+```
+src/
+  app/
+    api/           # REST API routes
+    meetings/      # 会議一覧・詳細・登録画面
+    projects/      # 案件一覧・詳細画面
+    admin/         # ユーザー管理（admin only）
+    login/         # ログイン画面
+  components/      # 共通コンポーネント
+  lib/             # Prisma, Storage, Auth クライアント
+  types/           # 型定義
+scripts/
+  worker/
+    transcribe/    # 文字起こしワーカー
+    summarize/     # 要約ワーカー
+  create-admin.ts  # 管理者ユーザー作成
+prisma/
+  schema.prisma
+  migrations/
+docs/              # 要件定義・技術仕様・タスクシート
+```
