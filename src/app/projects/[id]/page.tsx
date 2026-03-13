@@ -10,6 +10,7 @@ interface Meeting {
   meetingDate: string;
   status: string;
   notebooklmSynced: boolean;
+  notebooklmSyncedAt: string | null;
 }
 
 interface Project {
@@ -22,6 +23,12 @@ interface Project {
   meetings: Meeting[];
 }
 
+interface NotebooklmStatus {
+  synced: Meeting[];
+  unsynced: Meeting[];
+  lastSyncedAt: string | null;
+}
+
 export default function ProjectDetailPage({
   params,
 }: {
@@ -29,15 +36,23 @@ export default function ProjectDetailPage({
 }) {
   const { id } = use(params);
   const [project, setProject] = useState<Project | null>(null);
+  const [nbStatus, setNbStatus] = useState<NotebooklmStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ notebooklmUrl: "" });
+  const [nbProcessing, setNbProcessing] = useState(false);
+  const [selectedUnsynced, setSelectedUnsynced] = useState<Set<string>>(new Set());
 
   const fetchProject = async () => {
-    const res = await fetch(`/api/projects/${id}`);
-    const data = await res.json();
-    setProject(data);
-    setForm({ notebooklmUrl: data.notebooklmUrl ?? "" });
+    const [projRes, nbRes] = await Promise.all([
+      fetch(`/api/projects/${id}`),
+      fetch(`/api/projects/${id}/notebooklm`),
+    ]);
+    const projData = await projRes.json();
+    const nbData = await nbRes.json();
+    setProject(projData);
+    setNbStatus(nbData);
+    setForm({ notebooklmUrl: projData.notebooklmUrl ?? "" });
     setLoading(false);
   };
 
@@ -51,6 +66,29 @@ export default function ProjectDetailPage({
     });
     setEditing(false);
     await fetchProject();
+  };
+
+  const handleMarkSynced = async (meetingIds: string[], synced: boolean) => {
+    setNbProcessing(true);
+    const res = await fetch(`/api/projects/${id}/notebooklm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ meetingIds, synced }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setSelectedUnsynced(new Set());
+      await fetchProject();
+    }
+    setNbProcessing(false);
+  };
+
+  const toggleUnsyncedSelect = (mid: string) => {
+    setSelectedUnsynced((prev) => {
+      const next = new Set(prev);
+      next.has(mid) ? next.delete(mid) : next.add(mid);
+      return next;
+    });
   };
 
   if (loading) return <div className="text-center py-16 text-gray-400">読み込み中...</div>;
@@ -121,14 +159,146 @@ export default function ProjectDetailPage({
           </dl>
         </section>
 
-        {/* Meetings */}
+        {/* NotebookLM sync panel */}
+        <section className="bg-white rounded-lg border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-gray-800">NotebookLM 反映状況</h2>
+            {nbStatus?.lastSyncedAt && (
+              <span className="text-xs text-gray-400">
+                最終反映: {new Date(nbStatus.lastSyncedAt).toLocaleString("ja-JP")}
+              </span>
+            )}
+          </div>
+
+          {!nbStatus || (nbStatus.synced.length === 0 && nbStatus.unsynced.length === 0) ? (
+            <p className="text-sm text-gray-400">完了済みの会議がありません</p>
+          ) : (
+            <div className="space-y-4">
+              {/* Unsynced */}
+              {nbStatus.unsynced.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-orange-700">
+                      未反映 ({nbStatus.unsynced.length}件)
+                    </h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() =>
+                          setSelectedUnsynced(
+                            selectedUnsynced.size === nbStatus.unsynced.length
+                              ? new Set()
+                              : new Set(nbStatus.unsynced.map((m) => m.id))
+                          )
+                        }
+                        className="text-xs text-gray-500 hover:text-gray-700"
+                      >
+                        {selectedUnsynced.size === nbStatus.unsynced.length ? "全解除" : "全選択"}
+                      </button>
+                      {selectedUnsynced.size > 0 && (
+                        <button
+                          onClick={() => handleMarkSynced([...selectedUnsynced], true)}
+                          disabled={nbProcessing}
+                          className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50"
+                        >
+                          選択した{selectedUnsynced.size}件を反映済みにする
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <table className="w-full text-xs border border-orange-100 rounded overflow-hidden">
+                    <tbody className="divide-y divide-orange-50">
+                      {nbStatus.unsynced.map((m) => (
+                        <tr key={m.id} className="bg-orange-50">
+                          <td className="px-3 py-2 w-8">
+                            <input
+                              type="checkbox"
+                              checked={selectedUnsynced.has(m.id)}
+                              onChange={() => toggleUnsyncedSelect(m.id)}
+                              className="rounded"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                            {new Date(m.meetingDate).toLocaleDateString("ja-JP")}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Link href={`/meetings/${m.id}`} className="text-blue-600 hover:underline">
+                              {m.title}
+                            </Link>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              onClick={() => handleMarkSynced([m.id], true)}
+                              disabled={nbProcessing}
+                              className="text-green-600 hover:underline disabled:opacity-50"
+                            >
+                              反映済みにする
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Synced */}
+              {nbStatus.synced.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-green-700">
+                      反映済み ({nbStatus.synced.length}件)
+                    </h3>
+                    <button
+                      onClick={() =>
+                        handleMarkSynced(nbStatus.synced.map((m) => m.id), false)
+                      }
+                      disabled={nbProcessing}
+                      className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                    >
+                      全て未反映に戻す
+                    </button>
+                  </div>
+                  <table className="w-full text-xs border border-green-100 rounded overflow-hidden">
+                    <tbody className="divide-y divide-green-50">
+                      {nbStatus.synced.map((m) => (
+                        <tr key={m.id} className="bg-green-50">
+                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                            {new Date(m.meetingDate).toLocaleDateString("ja-JP")}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Link href={`/meetings/${m.id}`} className="text-blue-600 hover:underline">
+                              {m.title}
+                            </Link>
+                          </td>
+                          <td className="px-3 py-2 text-gray-400">
+                            {m.notebooklmSyncedAt
+                              ? new Date(m.notebooklmSyncedAt).toLocaleString("ja-JP")
+                              : ""}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              onClick={() => handleMarkSynced([m.id], false)}
+                              disabled={nbProcessing}
+                              className="text-gray-500 hover:underline disabled:opacity-50"
+                            >
+                              未反映に戻す
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* All meetings */}
         <section className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="font-semibold text-gray-800">会議一覧 ({project.meetings.length}件)</h2>
-            <Link
-              href={`/meetings/new`}
-              className="text-blue-600 text-sm hover:underline"
-            >
+            <h2 className="font-semibold text-gray-800">全会議 ({project.meetings.length}件)</h2>
+            <Link href="/meetings/new" className="text-blue-600 text-sm hover:underline">
               + 会議を登録
             </Link>
           </div>
@@ -151,15 +321,16 @@ export default function ProjectDetailPage({
                       {new Date(m.meetingDate).toLocaleDateString("ja-JP")}
                     </td>
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/meetings/${m.id}`}
-                        className="text-blue-600 hover:underline"
-                      >
+                      <Link href={`/meetings/${m.id}`} className="text-blue-600 hover:underline">
                         {m.title}
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {m.notebooklmSynced ? "✓" : "-"}
+                      {m.notebooklmSynced ? (
+                        <span className="text-green-600">✓</span>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={m.status} />

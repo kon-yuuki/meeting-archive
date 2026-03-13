@@ -6,6 +6,20 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String
+  passwordHash String        @map("password_hash")
+  role         String        @default("member")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  userProjects UserProject[]
+
+  @@map("users")
+}
+
 model Project {
   id             String    @id @default(cuid())
   projectCode    String    @unique @map("project_code")
@@ -16,9 +30,21 @@ model Project {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  meetings Meeting[]
+  meetings     Meeting[]
+  userProjects UserProject[]
 
   @@map("projects")
+}
+
+model UserProject {
+  userId    String @map("user_id")
+  projectId String @map("project_id")
+
+  user    User    @relation(fields: [userId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@id([userId, projectId])
+  @@map("user_projects")
 }
 
 model Meeting {

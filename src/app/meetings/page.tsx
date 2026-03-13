@@ -26,6 +26,8 @@ export default function MeetingsPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   const [keyword, setKeyword] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -35,6 +37,7 @@ export default function MeetingsPage() {
 
   const fetchMeetings = useCallback(async () => {
     setLoading(true);
+    setSelected(new Set());
     const params = new URLSearchParams();
     if (keyword) params.set("keyword", keyword);
     if (projectId) params.set("project_id", projectId);
@@ -58,6 +61,41 @@ export default function MeetingsPage() {
     fetchMeetings();
   }, [fetchMeetings]);
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === meetings.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(meetings.map((m) => m.id)));
+    }
+  };
+
+  const handleBulkAction = async (action: "retranscribe" | "resummarize") => {
+    if (selected.size === 0) return;
+    const label = action === "retranscribe" ? "再文字起こし" : "再要約";
+    if (!confirm(`選択した ${selected.size} 件を${label}キューに追加しますか？`)) return;
+
+    setBulkProcessing(true);
+    const res = await fetch("/api/meetings/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ meetingIds: [...selected], action }),
+    });
+    const data = await res.json();
+    alert(`${data.queued}件をキューに追加しました。スキップ: ${data.skipped}件`);
+    setBulkProcessing(false);
+    await fetchMeetings();
+  };
+
+  const errorMeetings = meetings.filter((m) => m.status === "error");
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -70,14 +108,30 @@ export default function MeetingsPage() {
         </Link>
       </div>
 
+      {/* Error alert */}
+      {errorMeetings.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
+          <span className="text-sm text-red-700">
+            ⚠ エラーが発生している会議が {errorMeetings.length} 件あります
+          </span>
+          <button
+            onClick={() => setStatus("error")}
+            className="text-xs text-red-600 underline hover:no-underline"
+          >
+            エラーのみ表示
+          </button>
+        </div>
+      )}
+
       {/* Search */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <input
             type="text"
             placeholder="キーワード検索"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && fetchMeetings()}
             className="border border-gray-200 rounded px-3 py-1.5 text-sm col-span-2"
           />
           <select
@@ -143,6 +197,33 @@ export default function MeetingsPage() {
         </div>
       </div>
 
+      {/* Bulk actions */}
+      {selected.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 mb-4 flex items-center gap-4">
+          <span className="text-sm text-blue-700 font-medium">{selected.size} 件選択中</span>
+          <button
+            onClick={() => handleBulkAction("retranscribe")}
+            disabled={bulkProcessing}
+            className="text-sm text-blue-700 border border-blue-300 px-3 py-1 rounded hover:bg-blue-100 disabled:opacity-50"
+          >
+            一括再文字起こし
+          </button>
+          <button
+            onClick={() => handleBulkAction("resummarize")}
+            disabled={bulkProcessing}
+            className="text-sm text-blue-700 border border-blue-300 px-3 py-1 rounded hover:bg-blue-100 disabled:opacity-50"
+          >
+            一括再要約
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="text-sm text-gray-500 ml-auto hover:text-gray-700"
+          >
+            選択解除
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         {loading ? (
@@ -153,6 +234,14 @@ export default function MeetingsPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="px-3 py-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={selected.size === meetings.length && meetings.length > 0}
+                    onChange={toggleAll}
+                    className="rounded"
+                  />
+                </th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">会議日</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">案件名</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">クライアント</th>
@@ -166,7 +255,18 @@ export default function MeetingsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {meetings.map((m) => (
-                <tr key={m.id} className="hover:bg-gray-50">
+                <tr
+                  key={m.id}
+                  className={`hover:bg-gray-50 ${m.status === "error" ? "bg-red-50" : ""}`}
+                >
+                  <td className="px-3 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(m.id)}
+                      onChange={() => toggleSelect(m.id)}
+                      className="rounded"
+                    />
+                  </td>
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                     {new Date(m.meetingDate).toLocaleDateString("ja-JP")}
                   </td>
@@ -197,6 +297,7 @@ export default function MeetingsPage() {
           </table>
         )}
       </div>
+      <p className="text-xs text-gray-400 mt-2">{meetings.length} 件</p>
     </div>
   );
 }
