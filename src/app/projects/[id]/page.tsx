@@ -1,0 +1,176 @@
+"use client";
+
+import { useEffect, useState, use } from "react";
+import Link from "next/link";
+import { StatusBadge } from "@/components/StatusBadge";
+
+interface Meeting {
+  id: string;
+  title: string;
+  meetingDate: string;
+  status: string;
+  notebooklmSynced: boolean;
+}
+
+interface Project {
+  id: string;
+  projectCode: string;
+  projectName: string;
+  clientName: string;
+  status: string;
+  notebooklmUrl: string | null;
+  meetings: Meeting[];
+}
+
+export default function ProjectDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ notebooklmUrl: "" });
+
+  const fetchProject = async () => {
+    const res = await fetch(`/api/projects/${id}`);
+    const data = await res.json();
+    setProject(data);
+    setForm({ notebooklmUrl: data.notebooklmUrl ?? "" });
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchProject(); }, [id]);
+
+  const handleSave = async () => {
+    await fetch(`/api/projects/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notebooklmUrl: form.notebooklmUrl || null }),
+    });
+    setEditing(false);
+    await fetchProject();
+  };
+
+  if (loading) return <div className="text-center py-16 text-gray-400">読み込み中...</div>;
+  if (!project) return <div className="text-center py-16 text-gray-400">案件が見つかりません</div>;
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-6">
+        <Link href="/projects" className="text-blue-600 text-sm hover:underline">
+          ← 案件一覧
+        </Link>
+        <h1 className="text-2xl font-bold text-gray-900 mt-2">{project.projectName}</h1>
+        <p className="text-gray-500 text-sm mt-1">
+          {project.projectCode} / {project.clientName}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        {/* Project info */}
+        <section className="bg-white rounded-lg border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-gray-800">案件情報</h2>
+            <button
+              onClick={() => setEditing(!editing)}
+              className="text-blue-600 text-sm hover:underline"
+            >
+              {editing ? "キャンセル" : "編集"}
+            </button>
+          </div>
+          <dl className="grid grid-cols-2 gap-2 text-sm">
+            <dt className="text-gray-500">案件コード</dt>
+            <dd className="font-mono">{project.projectCode}</dd>
+            <dt className="text-gray-500">案件名</dt>
+            <dd>{project.projectName}</dd>
+            <dt className="text-gray-500">クライアント</dt>
+            <dd>{project.clientName}</dd>
+            <dt className="text-gray-500">NotebookLM URL</dt>
+            <dd>
+              {editing ? (
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={form.notebooklmUrl}
+                    onChange={(e) => setForm({ notebooklmUrl: e.target.value })}
+                    placeholder="https://notebooklm.google.com/..."
+                    className="border border-gray-200 rounded px-2 py-1 text-sm flex-1"
+                  />
+                  <button
+                    onClick={handleSave}
+                    className="bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                  >
+                    保存
+                  </button>
+                </div>
+              ) : project.notebooklmUrl ? (
+                <a
+                  href={project.notebooklmUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline break-all"
+                >
+                  {project.notebooklmUrl}
+                </a>
+              ) : (
+                <span className="text-gray-400">未設定</span>
+              )}
+            </dd>
+          </dl>
+        </section>
+
+        {/* Meetings */}
+        <section className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-800">会議一覧 ({project.meetings.length}件)</h2>
+            <Link
+              href={`/meetings/new`}
+              className="text-blue-600 text-sm hover:underline"
+            >
+              + 会議を登録
+            </Link>
+          </div>
+          {project.meetings.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm">会議が登録されていません</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">会議日</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">タイトル</th>
+                  <th className="text-center px-4 py-3 font-medium text-gray-600">NB</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">ステータス</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {project.meetings.map((m) => (
+                  <tr key={m.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      {new Date(m.meetingDate).toLocaleDateString("ja-JP")}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/meetings/${m.id}`}
+                        className="text-blue-600 hover:underline"
+                      >
+                        {m.title}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {m.notebooklmSynced ? "✓" : "-"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={m.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
