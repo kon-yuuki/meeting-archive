@@ -1,6 +1,0 @@
-{
-  "files.associations": {
-    "*.css": "css",
-    "plyconfig.json": "jsonc"
-  }
-}
