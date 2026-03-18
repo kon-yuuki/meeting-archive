@@ -35,9 +35,7 @@ export default function MeetingsPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  const fetchMeetings = useCallback(async () => {
-    setLoading(true);
-    setSelected(new Set());
+  const fetchMeetingsData = useCallback(async () => {
     const params = new URLSearchParams();
     if (keyword) params.set("keyword", keyword);
     if (projectId) params.set("project_id", projectId);
@@ -46,25 +44,62 @@ export default function MeetingsPage() {
     if (dateTo) params.set("date_to", dateTo);
 
     const res = await fetch(`/api/meetings?${params}`);
-    const data = await res.json();
-    setMeetings(data);
-    setLoading(false);
+    return res.json();
   }, [keyword, projectId, status, dateFrom, dateTo]);
 
+  const fetchMeetings = useCallback(async () => {
+    setLoading(true);
+    setSelected(new Set());
+    const data = await fetchMeetingsData();
+    setMeetings(data);
+    setLoading(false);
+  }, [fetchMeetingsData]);
+
   useEffect(() => {
-    fetch("/api/projects")
-      .then((r) => r.json())
-      .then(setProjects);
+    let active = true;
+
+    const loadProjects = async () => {
+      const res = await fetch("/api/projects");
+      const data = await res.json();
+      if (active) {
+        setProjects(data);
+      }
+    };
+
+    void loadProjects();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    fetchMeetings();
-  }, [fetchMeetings]);
+    let active = true;
+
+    const loadMeetings = async () => {
+      const data = await fetchMeetingsData();
+      if (active) {
+        setSelected(new Set());
+        setMeetings(data);
+        setLoading(false);
+      }
+    };
+
+    void loadMeetings();
+
+    return () => {
+      active = false;
+    };
+  }, [fetchMeetingsData]);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };

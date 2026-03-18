@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useCallback } from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 
@@ -43,20 +43,44 @@ export default function ProjectDetailPage({
   const [nbProcessing, setNbProcessing] = useState(false);
   const [selectedUnsynced, setSelectedUnsynced] = useState<Set<string>>(new Set());
 
-  const fetchProject = async () => {
+  const fetchProjectData = useCallback(async () => {
     const [projRes, nbRes] = await Promise.all([
       fetch(`/api/projects/${id}`),
       fetch(`/api/projects/${id}/notebooklm`),
     ]);
-    const projData = await projRes.json();
-    const nbData = await nbRes.json();
-    setProject(projData);
-    setNbStatus(nbData);
-    setForm({ notebooklmUrl: projData.notebooklmUrl ?? "" });
-    setLoading(false);
-  };
+    return {
+      project: await projRes.json(),
+      notebooklm: await nbRes.json(),
+    };
+  }, [id]);
 
-  useEffect(() => { fetchProject(); }, [id]);
+  const fetchProject = useCallback(async () => {
+    const data = await fetchProjectData();
+    setProject(data.project);
+    setNbStatus(data.notebooklm);
+    setForm({ notebooklmUrl: data.project.notebooklmUrl ?? "" });
+    setLoading(false);
+  }, [fetchProjectData]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadProject = async () => {
+      const data = await fetchProjectData();
+      if (active) {
+        setProject(data.project);
+        setNbStatus(data.notebooklm);
+        setForm({ notebooklmUrl: data.project.notebooklmUrl ?? "" });
+        setLoading(false);
+      }
+    };
+
+    void loadProject();
+
+    return () => {
+      active = false;
+    };
+  }, [fetchProjectData]);
 
   const handleSave = async () => {
     await fetch(`/api/projects/${id}`, {
@@ -86,7 +110,11 @@ export default function ProjectDetailPage({
   const toggleUnsyncedSelect = (mid: string) => {
     setSelectedUnsynced((prev) => {
       const next = new Set(prev);
-      next.has(mid) ? next.delete(mid) : next.add(mid);
+      if (next.has(mid)) {
+        next.delete(mid);
+      } else {
+        next.add(mid);
+      }
       return next;
     });
   };

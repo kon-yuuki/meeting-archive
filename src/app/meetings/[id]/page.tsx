@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useCallback } from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { SummaryJson } from "@/types";
@@ -59,20 +59,32 @@ export default function MeetingDetailPage({
   const [editingProject, setEditingProject] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState("");
 
-  const fetchMeeting = async () => {
+  const fetchMeeting = useCallback(async () => {
     const res = await fetch(`/api/meetings/${id}`);
     const data = await res.json();
     setMeeting(data);
     setSelectedProjectId(data.project?.id ?? "");
     setLoading(false);
-  };
+  }, [id]);
 
   useEffect(() => {
-    fetchMeeting();
-    fetch("/api/projects")
-      .then((r) => r.json())
-      .then(setProjects);
-  }, [id]);
+    let active = true;
+
+    const load = async () => {
+      await fetchMeeting();
+      const res = await fetch("/api/projects");
+      const data = await res.json();
+      if (active) {
+        setProjects(data);
+      }
+    };
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [fetchMeeting]);
 
   const handleRetranscribe = async () => {
     if (!confirm("再文字起こしを実行しますか？現在の文字起こし結果は削除されます。")) return;
