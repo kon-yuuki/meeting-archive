@@ -1,13 +1,13 @@
 # 議事録管理システム タスクシート
 
-## 進捗サマリー（2026-03-13 更新）
+## 進捗サマリー（2026-03-19 更新）
 
 | Phase | 状況 |
 |-------|------|
 | Phase 1: MVP実装 | ほぼ完了。ワーカー・検索はコード実装済み、本番動作確認待ち |
 | Phase 2: 品質向上 | 認証・一括再処理・NotebookLM管理 実装済み |
 | Phase 3: 拡張機能 | Zoom自動取り込み 実装済み |
-| インフラ設定 | **社内PCへのデプロイ設定が残タスク** |
+| インフラ設定 | **Windows社内PCの初期セットアップは進行中。`.env.local`、DB初期化、起動確認が残タスク** |
 
 ---
 
@@ -15,7 +15,7 @@
 
 ### 高優先
 
-- [ ] **社内PCの環境設定**（`.env.local` の設定、DBマイグレーション実行、起動確認）
+- [ ] **社内PCの環境設定**（Windows PCで Git / Node.js / npm / Python 3.12 / `.venv` / `faster-whisper` までは完了。`.env.local` の設定、DBマイグレーション実行、起動確認が残り）
 - [ ] 文字起こしワーカーの本番動作確認（`scripts/worker/transcribe/`）
   - faster-whisper / whisper.cpp の導入・パス設定が必要
 - [ ] 要約ワーカーの本番動作確認（`scripts/worker/summarize/`）
