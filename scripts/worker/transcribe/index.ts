@@ -56,18 +56,14 @@ async function downloadToTemp(key: string): Promise<string> {
 }
 
 async function runWhisper(audioPath: string): Promise<string> {
-  // faster-whisper CLI wrapper
-  // python -m faster_whisper <file> --language ja --output_format txt
+  // Run a small local wrapper so we don't rely on a package CLI that may not exist.
   const { stdout } = await execFileAsync("python", [
-    "-m",
-    "faster_whisper",
+    path.join(process.cwd(), "scripts/worker/transcribe/run_faster_whisper.py"),
     audioPath,
-    "--language",
-    "ja",
-    "--output_format",
-    "txt",
   ]);
-  return stdout.trim();
+
+  const parsed = JSON.parse(stdout) as { text?: string };
+  return parsed.text?.trim() ?? "";
 }
 
 async function uploadTranscript(
