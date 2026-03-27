@@ -41,6 +41,11 @@ const s3 = new S3Client({
 });
 
 const bucket = process.env.STORAGE_BUCKET_NAME ?? "meeting-archive";
+const localPythonPath = process.platform === "win32"
+  ? path.join(process.cwd(), ".venv", "Scripts", "python.exe")
+  : path.join(process.cwd(), ".venv", "bin", "python");
+const pythonCommand = process.env.PYTHON_BIN
+  ?? (fs.existsSync(localPythonPath) ? localPythonPath : "python");
 
 async function downloadToTemp(key: string): Promise<string> {
   const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
@@ -57,12 +62,26 @@ async function downloadToTemp(key: string): Promise<string> {
 
 async function runWhisper(audioPath: string): Promise<string> {
   // Run a small local wrapper so we don't rely on a package CLI that may not exist.
-  const { stdout } = await execFileAsync("python", [
-    path.join(process.cwd(), "scripts/worker/transcribe/run_faster_whisper.py"),
-    audioPath,
-  ]);
+  const { stdout } = await execFileAsync(
+    pythonCommand,
+    [path.join(process.cwd(), "scripts/worker/transcribe/run_faster_whisper.py"), audioPath],
+    {
+      encoding: "utf8",
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+    }
+  );
 
-  const parsed = JSON.parse(stdout) as { text?: string };
+  const jsonLine = stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("{") && line.endsWith("}"))
+    .at(-1);
+
+  if (!jsonLine) {
+    throw new Error(`Transcription output did not contain JSON: ${stdout.slice(0, 300)}`);
+  }
+
+  const parsed = JSON.parse(jsonLine) as { text?: string };
   return parsed.text?.trim() ?? "";
 }
 
@@ -156,6 +175,7 @@ async function main() {
   }
 
   console.log("[transcribe] Worker started. Polling every", POLL_INTERVAL_MS / 1000, "s");
+  console.log("[transcribe] Python:", pythonCommand);
 
   while (true) {
     await processOne().catch(console.error);

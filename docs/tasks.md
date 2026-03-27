@@ -18,6 +18,10 @@
 - [ ] **社内PCの環境設定**（Windows PCで Git / Node.js / npm / Python 3.12 / `.venv` / `faster-whisper` までは完了。`.env.local` の設定、DBマイグレーション実行、起動確認が残り）
 - [ ] 文字起こしワーカーの本番動作確認（`scripts/worker/transcribe/`）
   - faster-whisper / whisper.cpp の導入・パス設定が必要
+- [ ] 文字起こしモデルの精度改善
+  - `kotoba-whisper-v2.0` / `whisper-large-v3-turbo` / `gpt-4o-transcribe` を候補比較
+  - サンプル音声で精度・速度・コストを評価して採用モデルを決定
+  - 採用モデルへワーカー実装を切り替え
 - [ ] 要約ワーカーの本番動作確認（`scripts/worker/summarize/`）
   - `OPENAI_API_KEY` または `ANTHROPIC_API_KEY` の設定が必要
 - [ ] Supabase Storage 接続確認（`STORAGE_BUCKET_NAME` 等の設定）
