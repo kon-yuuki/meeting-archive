@@ -9,17 +9,47 @@
  *   npx tsx scripts/worker/summarize/index.ts
  */
 
-import "dotenv/config";
+import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import type { SummaryJson } from "@/types";
 
+dotenv.config({ path: ".env.local" });
+
 const POLL_INTERVAL_MS = 15_000;
+const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+const DEFAULT_OLLAMA_MODEL = "gemma3:4b";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
 // ---- AI API call ----
+
+async function callOllamaApi(prompt: string): Promise<string> {
+  const res = await fetch(
+    `${process.env.OLLAMA_BASE_URL ?? DEFAULT_OLLAMA_BASE_URL}/api/generate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.OLLAMA_MODEL ?? DEFAULT_OLLAMA_MODEL,
+        prompt,
+        stream: false,
+        format: "json",
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Ollama API error: ${res.status} - ${body}`);
+  }
+
+  const data = await res.json();
+  return data.response as string;
+}
 
 async function callAnthropicApi(prompt: string): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -30,12 +60,15 @@ async function callAnthropicApi(prompt: string): Promise<string> {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
+      model: process.env.ANTHROPIC_MODEL ?? "claude-opus-4-1-20250805",
       max_tokens: 4096,
       messages: [{ role: "user", content: prompt }],
     }),
   });
-  if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Anthropic API error: ${res.status} - ${body}`);
+  }
   const data = await res.json();
   return data.content[0].text as string;
 }
@@ -90,12 +123,16 @@ ${transcriptText}
 JSONのみ返してください。`;
 
   let raw: string;
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (process.env.OLLAMA_ENABLED === "true") {
+    raw = await callOllamaApi(prompt);
+  } else if (process.env.ANTHROPIC_API_KEY) {
     raw = await callAnthropicApi(prompt);
   } else if (process.env.OPENAI_API_KEY) {
     raw = await callOpenAiApi(prompt);
   } else {
-    throw new Error("No AI API key configured (ANTHROPIC_API_KEY or OPENAI_API_KEY)");
+    throw new Error(
+      "No summarization provider configured (set OLLAMA_ENABLED=true, ANTHROPIC_API_KEY, or OPENAI_API_KEY)"
+    );
   }
 
   // Extract JSON from response
@@ -205,6 +242,23 @@ async function processOne() {
 
 async function main() {
   console.log("[summarize] Worker started. Polling every", POLL_INTERVAL_MS / 1000, "s");
+  if (process.env.OLLAMA_ENABLED === "true") {
+    console.log("[summarize] Provider: Ollama");
+    console.log(
+      "[summarize] Base URL:",
+      process.env.OLLAMA_BASE_URL ?? DEFAULT_OLLAMA_BASE_URL
+    );
+    console.log("[summarize] Model:", process.env.OLLAMA_MODEL ?? DEFAULT_OLLAMA_MODEL);
+  } else if (process.env.ANTHROPIC_API_KEY) {
+    console.log("[summarize] Provider: Anthropic");
+    console.log(
+      "[summarize] Model:",
+      process.env.ANTHROPIC_MODEL ?? "claude-opus-4-1-20250805"
+    );
+  } else if (process.env.OPENAI_API_KEY) {
+    console.log("[summarize] Provider: OpenAI");
+    console.log("[summarize] Model: gpt-4o-mini");
+  }
 
   while (true) {
     await processOne().catch(console.error);

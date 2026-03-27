@@ -86,6 +86,27 @@ export default function MeetingDetailPage({
     };
   }, [fetchMeeting]);
 
+  useEffect(() => {
+    if (!meeting) return;
+
+    const activeStatuses = new Set([
+      "queued_for_transcription",
+      "transcribing",
+      "queued_for_summary",
+      "summarizing",
+    ]);
+
+    if (!activeStatuses.has(meeting.status)) return;
+
+    const intervalId = window.setInterval(() => {
+      void fetchMeeting();
+    }, 5000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [fetchMeeting, meeting]);
+
   const handleRetranscribe = async () => {
     if (!confirm("再文字起こしを実行しますか？現在の文字起こし結果は削除されます。")) return;
     setProcessing(true);
